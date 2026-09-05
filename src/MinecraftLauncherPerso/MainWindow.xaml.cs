@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using CmlLib.Core;
 using CmlLib.Core.ProcessBuilder;
 using MinecraftLauncherPerso.Models;
@@ -105,6 +106,26 @@ public partial class MainWindow : Window
         {
             PlayButton.IsEnabled = true;
         }
+    }
+
+    // Fenêtre sans chrome Windows (WindowStyle="None") : on réimplémente le déplacement et les
+    // boutons réduire/fermer nous-mêmes.
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 
     private void AppendLog(string message)

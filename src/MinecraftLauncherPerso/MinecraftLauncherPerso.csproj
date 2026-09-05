@@ -19,4 +19,12 @@
     <PackageReference Include="CmlLib.Core.Installer.Forge" Version="1.1.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Polices embarquées (charte Algaron) : Chakra Petch (titres), Inter (corps), JetBrains Mono
+         (données/RAM/logs). Licence SIL Open Font License, textes conservés à côté des .ttf.
+         None Remove évite un conflit avec le glob implicite du SDK (sinon inclus deux fois). -->
+    <None Remove="Assets\Fonts\*.ttf" />
+    <Resource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
+
 </Project>

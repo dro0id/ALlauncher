@@ -1,0 +1,139 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Charte graphique Algaron : fond bleu-nuit, néon cyan, géométrie angulaire. -->
+
+    <Color x:Key="ColorVoid">#FF06080F</Color>
+    <Color x:Key="ColorSurface">#FF0C1120</Color>
+    <Color x:Key="ColorSurface2">#FF121A2E</Color>
+    <Color x:Key="ColorLine">#FF1E2942</Color>
+    <Color x:Key="ColorCyan">#FF00E5C7</Color>
+    <Color x:Key="ColorMagenta">#FFFF3D8B</Color>
+    <Color x:Key="ColorViolet">#FF7B5CFF</Color>
+    <Color x:Key="ColorAmber">#FFFFB020</Color>
+    <Color x:Key="ColorInk">#FFE8ECF5</Color>
+    <Color x:Key="ColorInkDim">#FF8494B0</Color>
+    <Color x:Key="ColorInput">#FF080C16</Color>
+
+    <SolidColorBrush x:Key="VoidBrush" Color="{StaticResource ColorVoid}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource ColorSurface}" />
+    <SolidColorBrush x:Key="Surface2Brush" Color="{StaticResource ColorSurface2}" />
+    <SolidColorBrush x:Key="LineBrush" Color="{StaticResource ColorLine}" />
+    <SolidColorBrush x:Key="CyanBrush" Color="{StaticResource ColorCyan}" />
+    <SolidColorBrush x:Key="MagentaBrush" Color="{StaticResource ColorMagenta}" />
+    <SolidColorBrush x:Key="VioletBrush" Color="{StaticResource ColorViolet}" />
+    <SolidColorBrush x:Key="AmberBrush" Color="{StaticResource ColorAmber}" />
+    <SolidColorBrush x:Key="InkBrush" Color="{StaticResource ColorInk}" />
+    <SolidColorBrush x:Key="InkDimBrush" Color="{StaticResource ColorInkDim}" />
+    <SolidColorBrush x:Key="InputBrush" Color="{StaticResource ColorInput}" />
+
+    <!-- Polices embarquées (Assets/Fonts, licence OFL) : ./ = racine de l'assembly courant. -->
+    <FontFamily x:Key="DisplayFontFamily">./Assets/Fonts/#Chakra Petch</FontFamily>
+    <FontFamily x:Key="BodyFontFamily">./Assets/Fonts/#Inter</FontFamily>
+    <FontFamily x:Key="MonoFontFamily">./Assets/Fonts/#JetBrains Mono</FontFamily>
+
+    <!-- Bouton primaire (CTA) : biseau à deux coins opposés, seul élément cyan plein de l'écran.
+         Taille fixe (200x48, coupe 9px) : le polygone est calculé pour cette taille exacte. -->
+    <ControlTemplate x:Key="PrimaryButtonTemplate" TargetType="Button">
+        <Grid x:Name="Root">
+            <Polygon x:Name="ButtonShape"
+                     Points="9,0 200,0 200,39 191,48 0,48 0,9"
+                     Fill="{StaticResource CyanBrush}" />
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="ButtonShape" Property="Effect">
+                    <Setter.Value>
+                        <DropShadowEffect Color="{StaticResource ColorCyan}" BlurRadius="24" ShadowDepth="0" Opacity="0.6" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Root" Property="Opacity" Value="0.35" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="200" />
+        <Setter Property="Height" Value="48" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource VoidBrush}" />
+        <Setter Property="Template" Value="{StaticResource PrimaryButtonTemplate}" />
+    </Style>
+
+    <!-- Bouton fantôme : chrome de fenêtre (réduire/fermer), petit bouton carré cyan filaire. -->
+    <ControlTemplate x:Key="GhostButtonTemplate" TargetType="Button">
+        <Border x:Name="GhostBackground" Background="Transparent">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="GhostBackground" Property="Background" Value="#1900E5C7" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style x:Key="GhostButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        <Setter Property="Template" Value="{StaticResource GhostButtonTemplate}" />
+    </Style>
+
+    <!-- Carte / panneau : coins vifs (jamais de CornerRadius), fond Surface, filet Line. -->
+    <Style x:Key="CardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <!-- Champ de saisie (RAM) : fond Input, filet Line, focus cyan. -->
+    <Style x:Key="AlgaronTextBoxStyle" TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource InputBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CaretBrush" Value="{StaticResource CyanBrush}" />
+        <Setter Property="SelectionBrush" Value="{StaticResource CyanBrush}" />
+        <Style.Triggers>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource CyanBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Journal de statut : lecture seule, mono, texte atténué. -->
+    <Style x:Key="StatusLogStyle" TargetType="TextBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- Eyebrow / label mono : sur-titre discret, espacement approché via espaces manuels
+         (WPF n'a pas de propriété letter-spacing native). -->
+    <Style x:Key="EyebrowTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource CyanBrush}" />
+    </Style>
+
+</ResourceDictionary>
