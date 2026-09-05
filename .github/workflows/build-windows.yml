@@ -1,0 +1,43 @@
+name: Build Windows launcher
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    # WPF (net8.0-windows) ne peut être compilé que sur un hôte Windows :
+    # le SDK Microsoft.NET.Sdk.WindowsDesktop (compilateur XAML inclus) n'est distribué que là.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: dotnet build -c Release --no-restore
+
+      - name: Publish (self-contained win-x64, exe unique)
+        run: >
+          dotnet publish src/MinecraftLauncherPerso/MinecraftLauncherPerso.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/win-x64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MinecraftLauncherPerso-win-x64
+          path: publish/win-x64/**
+          if-no-files-found: error
