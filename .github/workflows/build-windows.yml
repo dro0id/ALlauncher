@@ -26,7 +26,7 @@ jobs:
       - name: Build (Release)
         run: dotnet build -c Release --no-restore
 
-      - name: Publish (self-contained win-x64, exe unique)
+      - name: Publish (self-contained win-x64, exe unique, ~65 Mo)
         run: >
           dotnet publish src/MinecraftLauncherPerso/MinecraftLauncherPerso.csproj
           -c Release
@@ -34,10 +34,27 @@ jobs:
           --self-contained true
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
-          -o publish/win-x64
+          -o publish/win-x64-selfcontained
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MinecraftLauncherPerso-win-x64
-          path: publish/win-x64/**
+          name: MinecraftLauncherPerso-win-x64-selfcontained
+          path: publish/win-x64-selfcontained/**
+          if-no-files-found: error
+
+      # Build "framework-dependent" : quelques Mo au lieu de ~65 Mo, mais nécessite d'avoir
+      # le .NET 8 Desktop Runtime installé sur la machine (téléchargeable depuis
+      # https://dotnet.microsoft.com/download/dotnet/8.0 -> "Desktop Runtime" x64).
+      - name: Publish (framework-dependent win-x64, léger)
+        run: >
+          dotnet publish src/MinecraftLauncherPerso/MinecraftLauncherPerso.csproj
+          -c Release
+          -r win-x64
+          --self-contained false
+          -o publish/win-x64-framework-dependent
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MinecraftLauncherPerso-win-x64-framework-dependent
+          path: publish/win-x64-framework-dependent/**
           if-no-files-found: error
