@@ -125,12 +125,18 @@ directement dans `GameDirectory`, en écrasant les fichiers existants.
 
 Fichier : `src/MinecraftLauncherPerso/Services/Auth/MinecraftAuthService.cs`
 
-Lit `%AppData%/.minecraft/launcher_accounts.json` : cherche le compte référencé par
-`activeAccountLocalId`, et en extrait `accessToken` + `minecraftProfile.name`/`.id` (pseudo et UUID
-réellement utilisés en jeu — le champ racine `username` du compte est l'identifiant Microsoft/email,
-pas le pseudo Minecraft). Lève une erreur explicite si le fichier est absent, si aucun compte actif
-n'est trouvé, ou si le token a une date d'expiration dépassée — dans ces cas, l'utilisateur doit
-rouvrir le launcher officiel et se reconnecter avant de relancer ce launcher.
+Deux variantes du launcher officiel existent, avec des noms de fichiers différents mais le même
+format JSON — les deux sont essayées dans `%AppData%/.minecraft/`, dans cet ordre :
+1. `launcher_accounts_microsoft_store.json` (launcher installé depuis le **Microsoft Store / app
+   Xbox** — la variante la plus courante sur une installation Windows récente).
+2. `launcher_accounts.json` (launcher classique téléchargé sur minecraft.net).
+
+Pour chaque fichier trouvé : cherche le compte référencé par `activeAccountLocalId`, et en extrait
+`accessToken` + `minecraftProfile.name`/`.id` (pseudo et UUID réellement utilisés en jeu — le champ
+racine `username` du compte est l'identifiant Microsoft/email, pas le pseudo Minecraft). Lève une
+erreur explicite listant ce qui a été essayé si aucun des deux fichiers ne donne de session valide
+(absent, aucun compte actif, ou token expiré) — dans ce cas, l'utilisateur doit ouvrir/rouvrir le
+launcher officiel et se (re)connecter avant de relancer ce launcher.
 
 **Chaque joueur doit donc avoir installé le launcher officiel Minecraft et s'y être connecté au
 moins une fois** (ce qu'il doit de toute façon faire pour un compte légitime) avant d'utiliser ce

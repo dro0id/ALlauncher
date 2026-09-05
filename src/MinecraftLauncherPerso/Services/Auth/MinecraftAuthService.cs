@@ -5,66 +5,125 @@ using System.Text.Json.Serialization;
 namespace MinecraftLauncherPerso.Services.Auth;
 
 /// <summary>
-/// Lit la session active du launcher officiel Minecraft installé sur la machine
-/// (%AppData%/.minecraft/launcher_accounts.json), sans implémenter de flux OAuth Microsoft :
-/// l'utilisateur doit simplement être déjà connecté dans le launcher officiel.
+/// Lit la session active du launcher officiel Minecraft installé sur la machine, sans
+/// implémenter de flux OAuth Microsoft : l'utilisateur doit simplement être déjà connecté dans
+/// le launcher officiel (classique ou Microsoft Store/Xbox).
 ///
-/// Format actuel (post-migration comptes Microsoft) : un dictionnaire "accounts" indexé par
-/// localId, chaque compte exposant "accessToken" + "minecraftProfile" (name/id). Piège à éviter :
-/// le champ racine "username" d'un compte est l'identifiant Microsoft (email), PAS le pseudo
-/// Minecraft — le pseudo et l'UUID utilisés en jeu viennent de minecraftProfile.name/.id.
+/// Deux fichiers possibles dans %AppData%/.minecraft/, selon la variante du launcher officiel
+/// installée (même format JSON dans les deux cas) :
+///   - launcher_accounts_microsoft_store.json : launcher installé depuis le Microsoft Store / app Xbox.
+///   - launcher_accounts.json : launcher classique téléchargé sur minecraft.net.
+/// Les deux sont essayés dans cet ordre, car la variante Store est aujourd'hui la plus courante
+/// sur une installation Windows récente.
+///
+/// Format (post-migration comptes Microsoft) : un dictionnaire "accounts" indexé par localId,
+/// chaque compte exposant "accessToken" + "minecraftProfile" (name/id). Piège à éviter : le champ
+/// racine "username" d'un compte est l'identifiant Microsoft (email), PAS le pseudo Minecraft —
+/// le pseudo et l'UUID utilisés en jeu viennent de minecraftProfile.name/.id.
 /// </summary>
 public sealed class MinecraftAuthService : IAuthService
 {
-    private readonly string _launcherAccountsPath;
+    private static readonly string[] CandidateFileNames =
+    {
+        "launcher_accounts_microsoft_store.json",
+        "launcher_accounts.json",
+    };
+
+    private readonly IReadOnlyList<string> _candidatePaths;
 
     public MinecraftAuthService(string? launcherAccountsPath = null)
     {
-        _launcherAccountsPath = launcherAccountsPath ?? Path.Combine(
+        if (launcherAccountsPath is not null)
+        {
+            _candidatePaths = new[] { launcherAccountsPath };
+            return;
+        }
+
+        var minecraftDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            ".minecraft", "launcher_accounts.json");
+            ".minecraft");
+
+        _candidatePaths = CandidateFileNames
+            .Select(name => Path.Combine(minecraftDirectory, name))
+            .ToArray();
     }
 
     public MinecraftSession GetActiveSession()
     {
-        if (!File.Exists(_launcherAccountsPath))
+        var problems = new List<string>();
+
+        foreach (var path in _candidatePaths)
         {
-            throw new InvalidOperationException(
-                $"Fichier introuvable : {_launcherAccountsPath}. " +
-                "Ouvrez le launcher officiel Minecraft et connectez-vous d'abord avec votre compte.");
+            if (!File.Exists(path))
+            {
+                problems.Add($"{path} : fichier introuvable.");
+                continue;
+            }
+
+            if (TryReadSession(path, out var session, out var problem))
+            {
+                return session;
+            }
+
+            problems.Add($"{path} : {problem}");
         }
 
-        var root = JsonSerializer.Deserialize<LauncherAccountsFile>(File.ReadAllText(_launcherAccountsPath))
-            ?? throw new InvalidOperationException($"Fichier illisible : {_launcherAccountsPath}.");
+        throw new InvalidOperationException(
+            "Aucune session valide trouvée dans le launcher officiel Minecraft (classique ou " +
+            "Microsoft Store). Ouvrez-le et connectez-vous d'abord avec votre compte.\n" +
+            string.Join("\n", problems));
+    }
+
+    private static bool TryReadSession(string path, out MinecraftSession session, out string? problem)
+    {
+        session = null!;
+
+        LauncherAccountsFile? root;
+        try
+        {
+            root = JsonSerializer.Deserialize<LauncherAccountsFile>(File.ReadAllText(path));
+        }
+        catch (JsonException)
+        {
+            problem = "fichier illisible (JSON invalide).";
+            return false;
+        }
+
+        if (root is null)
+        {
+            problem = "fichier illisible.";
+            return false;
+        }
 
         if (string.IsNullOrEmpty(root.ActiveAccountLocalId)
             || root.Accounts is null
             || !root.Accounts.TryGetValue(root.ActiveAccountLocalId, out var account))
         {
-            throw new InvalidOperationException(
-                "Aucun compte actif trouvé dans launcher_accounts.json. " +
-                "Connectez-vous dans le launcher officiel Minecraft, puis relancez ce launcher.");
+            problem = "aucun compte actif.";
+            return false;
         }
 
         if (account.MinecraftProfile is null || string.IsNullOrEmpty(account.AccessToken))
         {
-            throw new InvalidOperationException(
-                "Le compte actif du launcher officiel n'a pas de profil Minecraft ou d'accessToken valide.");
+            problem = "profil Minecraft ou accessToken manquant.";
+            return false;
         }
 
         if (account.AccessTokenExpiresAt is { } expiresAt && expiresAt < DateTimeOffset.UtcNow)
         {
-            throw new InvalidOperationException(
-                "La session du launcher officiel a expiré. Rouvrez-le, reconnectez-vous, puis relancez ce launcher.");
+            problem = "session expirée : reconnectez-vous dans le launcher officiel.";
+            return false;
         }
 
-        return new MinecraftSession(
+        problem = null;
+        session = new MinecraftSession(
             account.MinecraftProfile.Name,
             FormatUuid(account.MinecraftProfile.Id),
             account.AccessToken);
+        return true;
     }
 
-    /// <summary>launcher_accounts.json stocke l'UUID sans tirets ; CmlLib.Core attend le format standard 8-4-4-4-12.</summary>
+    /// <summary>launcher_accounts*.json stocke l'UUID sans tirets ; CmlLib.Core attend le format standard 8-4-4-4-12.</summary>
     private static string FormatUuid(string rawId)
     {
         var clean = rawId.Replace("-", "");
