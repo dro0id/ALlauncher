@@ -16,11 +16,10 @@ Launcher WPF (.NET / C#) pour un serveur Minecraft privé (8 joueurs max), basé
 1. Vérifie/installe Java 8 (build Temurin/Adoptium si absent) — **implémenté**
 2. Installe Forge 1.16.5-36.2.34 via CmlLib.Core.Installer.Forge — **implémenté**
 3. Synchronise `mods/` et `config/` depuis le VPS (par hash, pas à chaque lancement) — **implémenté**
-4. Réutilise la session déjà connectée du launcher officiel (`launcher_accounts.json`) — **implémenté**
+4. Authentifie le joueur via OAuth Microsoft (device code flow) puis Xbox Live/XSTS — **implémenté**
 5. Lance le jeu avec le bon classpath Forge et la RAM configurée — **implémenté**
 
-Pas d'implémentation OAuth Microsoft : le launcher lit la session déjà authentifiée sur la machine.
-Pas de gestion multi-comptes : usage privé entre amis, un seul compte par machine.
+Pas de gestion multi-comptes : usage privé entre amis, un compte Microsoft actif par session de jeu.
 
 ## Structure du repo
 
@@ -46,9 +45,9 @@ Pas de gestion multi-comptes : usage privé entre amis, un seul compte par machi
 │           ├── ModSync/                    # synchro du modpack .zip depuis le VPS (ETag/Last-Modified)
 │           │   ├── IModSyncService.cs
 │           │   └── ModSyncService.cs
-│           ├── Auth/                       # lecture session launcher officiel
+│           ├── Auth/                       # OAuth Microsoft (device code) -> Xbox Live -> XSTS -> Minecraft
 │           │   ├── IAuthService.cs
-│           │   └── MinecraftAuthService.cs
+│           │   └── MicrosoftAuthService.cs
 │           ├── Launch/                     # construction + démarrage du process Forge/Minecraft
 │           │   ├── IGameLauncher.cs
 │           │   └── GameLauncher.cs
@@ -111,16 +110,54 @@ retélécharge pas à chaque lancement. Si le serveur ne renvoie pas ces en-têt
 `HEAD`), le launcher retélécharge par prudence plutôt que d'échouer. Le zip est ensuite extrait
 directement dans `GameDirectory`, en écrasant les fichiers existants.
 
-## Authentification (session du launcher officiel)
+## Authentification (OAuth Microsoft)
 
-Fichier : `src/MinecraftLauncherPerso/Services/Auth/MinecraftAuthService.cs`
+Fichier : `src/MinecraftLauncherPerso/Services/Auth/MicrosoftAuthService.cs`
 
-Lit `%AppData%/.minecraft/launcher_accounts.json` : cherche le compte référencé par
-`activeAccountLocalId`, et en extrait `accessToken` + `minecraftProfile.name`/`.id` (pseudo et UUID
-réellement utilisés en jeu — le champ racine `username` du compte est l'identifiant Microsoft/email,
-pas le pseudo Minecraft). Lève une erreur explicite si le fichier est absent, si aucun compte actif
-n'est trouvé, ou si le token a une date d'expiration dépassée — dans ces cas, l'utilisateur doit
-rouvrir le launcher officiel et se reconnecter avant de relancer ce launcher.
+Le launcher ne dépend plus du launcher officiel Minecraft (ni de `launcher_accounts.json`) : il
+s'authentifie lui-même directement auprès de Microsoft, via MSAL.NET (device code flow), puis
+échange le token obtenu contre une session Minecraft via la chaîne standard :
+
+1. **Microsoft (MSAL.NET, device code flow)** : au premier lancement (ou si la session en cache a
+   expiré), le launcher affiche un message du type *"ouvrez https://microsoft.com/link et entrez le
+   code ABCD-EFGH"* dans le journal de statut, et ouvre automatiquement le navigateur par défaut sur
+   cette page. Une fois connecté dans le navigateur, le launcher récupère le token Microsoft.
+2. **Xbox Live** (`user.auth.xboxlive.com/user/authenticate`) puis **XSTS**
+   (`xsts.auth.xboxlive.com/xsts/authorize`) : échange le token Microsoft contre un token Xbox Live
+   autorisé pour Minecraft.
+3. **Minecraft Services** (`api.minecraftservices.com/authentication/login_with_xbox`) : échange le
+   token XSTS contre le token d'accès Minecraft, puis récupère le pseudo/UUID réels via
+   `/minecraft/profile`.
+
+La session Microsoft (refresh token) est mise en cache localement
+(`%AppData%/MinecraftLauncherPerso/msal-cache.bin`, via le mécanisme de sérialisation standard de
+MSAL.NET) : une fois connecté une première fois, les lancements suivants renouvellent la session
+**en silence**, sans redemander de connexion interactive, tant que le refresh token Microsoft reste
+valide (généralement plusieurs mois).
+
+Des erreurs Xbox Live courantes sont traduites en messages clairs (pas de compte Xbox associé,
+compte enfant nécessitant une famille Microsoft, région non supportée, compte sans Minecraft) plutôt
+que de simplement remonter un code d'erreur brut.
+
+### Créer l'application Azure AD (obligatoire, à faire une seule fois)
+
+Minecraft/Xbox Live n'acceptent que des tokens émis pour une application cliente explicitement
+enregistrée : il n'existe pas de "client ID" générique réutilisable par un launcher tiers. Il faut
+donc en créer une (gratuit, ~5 minutes) :
+
+1. Aller sur [portal.azure.com](https://portal.azure.com) → **Azure Active Directory** (ou
+   **Microsoft Entra ID**) → **App registrations** → **New registration**.
+2. Nom libre (ex. "Launcher Algaron"), **Supported account types** = *"Personal Microsoft accounts
+   only"*, pas de Redirect URI à cette étape → **Register**.
+3. Copier l'**Application (client) ID** affiché sur la page — c'est la valeur à mettre dans
+   `MicrosoftClientId` (voir plus bas).
+4. Aller dans **Authentication** (menu de gauche) → **Add a platform** → **Mobile and desktop
+   applications** → cocher `https://login.microsoftonline.com/common/oauth2/nativeclient` →
+   **Configure**.
+5. Toujours dans **Authentication**, activer **"Allow public client flows"** = **Yes**, puis
+   **Save**.
+
+Renseigner ensuite `MicrosoftClientId` avec ce client ID (voir section Configuration ci-dessous).
 
 ## Lancement du jeu
 
@@ -143,20 +180,29 @@ dotnet build
 dotnet run --project src/MinecraftLauncherPerso
 ```
 
-> **Cet environnement de développement est Linux** et ne peut pas compiler de projet WPF
-> (`net8.0-windows`), ni installer le SDK .NET ici : le code n'a donc pas encore été
-> buildé/testé. À valider avec `dotnet build` sur une machine Windows.
+> Le développement se fait dans un environnement Linux, qui ne peut pas compiler de projet WPF
+> (`net8.0-windows`) : impossible de builder ou tester ici. Un workflow CI GitHub Actions
+> (`.github/workflows/build-windows.yml`) build le projet sur `windows-latest` à chaque push et
+> publie un exécutable en artifact — c'est le moyen de vérifier qu'un changement compile toujours.
 >
-> Les noms exacts de types/propriétés CmlLib.Core (`MSession`, `MLaunchOption.JavaPath`,
-> `MinimumRamMb`/`MaximumRamMb`, `ForgeInstaller.Install(...)`, `ForgeInstallOptions`,
-> `ProcessWrapper`) ont été vérifiés contre le code source et les exemples officiels des dépôts
-> CmlLib.Core / CmlLib.Core.Installer.Forge, mais pas contre une compilation réelle : si `dotnet
-> build` signale une propriété introuvable, corrigez le nom exact indiqué par le compilateur (le
-> reste de la logique — orchestration, manifeste, lecture de launcher_accounts.json — n'en dépend
-> pas).
+> Le flux OAuth Microsoft/Xbox Live/XSTS (`MicrosoftAuthService`) n'a en revanche encore jamais été
+> testé en conditions réelles (nécessite un vrai compte Microsoft + une app Azure AD) : à valider
+> en priorité après avoir créé l'app Azure AD (voir section Authentification).
 
 ## Configuration avant premier lancement
 
 `ModpackZipUrl` est déjà préconfigué sur `http://185.185.82.180/modpack/Algaron-modded.zip` par
-défaut. Pour changer d'URL (ou de RAM par défaut) sans passer par l'UI, modifier
-`%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement).
+défaut. En revanche **`MicrosoftClientId` est vide par défaut et doit être renseigné avant de
+pouvoir se connecter** (voir section Authentification ci-dessus pour le créer) : sans ça, le
+launcher refuse de démarrer l'authentification avec un message explicite.
+
+Modifier `%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement) :
+
+```json
+{
+  "MicrosoftClientId": "<votre Application (client) ID Azure AD>"
+}
+```
+
+Les autres champs (RAM, URL du modpack, dossier de jeu) peuvent aussi y être ajustés sans passer
+par l'UI.
