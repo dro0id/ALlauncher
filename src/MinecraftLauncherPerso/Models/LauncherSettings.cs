@@ -9,8 +9,12 @@ public sealed class LauncherSettings
 
     public string ForgeVersion { get; set; } = "36.2.34";
 
-    /// <summary>URL directe de l'archive .zip du modpack (mods/ + config/ à sa racine) hébergée sur le VPS.</summary>
-    public string ModpackZipUrl { get; set; } = "http://185.185.82.180/modpack/Algaron-modded.zip";
+    /// <summary>
+    /// URL directe de l'archive .zip du modpack (mods/ + config/ à sa racine) hébergée sur le VPS.
+    /// Volontairement vide par défaut (pas d'IP/URL privée dans le code source) : à renseigner dans
+    /// %AppData%/MinecraftLauncherPerso/settings.json avant le premier lancement.
+    /// </summary>
+    public string ModpackZipUrl { get; set; } = "";
 
     public int MinRamMb { get; set; } = 2048;
 

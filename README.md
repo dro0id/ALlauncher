@@ -39,10 +39,16 @@ amis, un seul compte par machine.
 ├── src/
 │   └── MinecraftLauncherPerso/
 │       ├── MinecraftLauncherPerso.csproj   # net8.0-windows, WPF, CmlLib.Core + Installer.Forge
-│       ├── App.xaml(.cs)                   # bootstrap de l'application WPF
+│       │                                   # AssemblyName "AL Launcher", pas de .pdb, icône embarquée
+│       ├── App.xaml(.cs)                   # bootstrap : ouvre SplashWindow au démarrage
+│       ├── SplashWindow.xaml(.cs)          # écran de démarrage (logo animé), puis ouvre MainWindow
 │       ├── MainWindow.xaml(.cs)            # UI + orchestration Java → Forge → Sync → Auth → Lancement
+│       ├── AlgaronTheme.xaml               # charte graphique (couleurs, polices, styles de contrôles)
+│       ├── Assets/
+│       │   ├── Fonts/                      # Chakra Petch / Inter / JetBrains Mono (OFL), embarquées
+│       │   └── Images/                     # logo Algaron (mark/lockup) + icône .ico du launcher
 │       ├── Models/
-│       │   ├── LauncherSettings.cs         # préférences persistées (RAM, dossier de jeu, URL VPS)
+│       │   ├── LauncherSettings.cs         # préférences persistées (RAM, dossier de jeu, URL modpack)
 │       │   ├── JavaVersionInfo.cs
 │       │   └── JavaSetupProgress.cs
 │       └── Services/
@@ -153,6 +159,22 @@ launcher ne bloque pas en attendant la fermeture du jeu : le bouton "Jouer" rede
 dès que le process a démarré, et les logs du jeu remontent dans le journal de statut tant que la
 fenêtre reste ouverte.
 
+## Identité visuelle (branding Algaron)
+
+Fichiers : `AlgaronTheme.xaml`, `SplashWindow.xaml(.cs)`, `MainWindow.xaml`, `Assets/`
+
+- **Thème** (`AlgaronTheme.xaml`) : palette néon sur fond bleu-nuit (cyan `#00E5C7` en accent unique),
+  géométrie à coins vifs/biseautés (jamais de `CornerRadius`), polices Chakra Petch / Inter /
+  JetBrains Mono embarquées (licence OFL) pour un rendu identique sans installation côté joueur.
+- **Fenêtre principale** : chrome Windows par défaut désactivé (`WindowStyle="None"`), barre de titre
+  et boutons réduire/fermer personnalisés, dessinés dans le thème.
+- **Écran de démarrage** (`SplashWindow`) : affiche le logo Algaron (`algaron-lockup.png`) avec une
+  entrée animée (rotation + zoom, easing à rebond) avant de céder la place à la fenêtre principale ;
+  ouvert par `App.xaml.cs` au lancement, à la place de `MainWindow` directement.
+- **Icône/exécutable** : l'exécutable publié s'appelle `AL Launcher.exe` (`AssemblyName`), porte une
+  icône Windows multi-résolutions générée depuis le logo (`Assets/Images/algaron-mark.ico`), et ne
+  génère plus de fichier `.pdb` (`DebugType=None`).
+
 ## Build
 
 Le projet cible `net8.0-windows` (WPF) : à builder/exécuter sous Windows avec le SDK .NET 8.
@@ -170,6 +192,16 @@ dotnet run --project src/MinecraftLauncherPerso
 >
 ## Configuration avant premier lancement
 
-`ModpackZipUrl` est déjà préconfiguré par défaut (URL du VPS). Pour ajuster RAM, URL du modpack ou
-dossier de jeu sans passer par l'UI, modifier `%AppData%/MinecraftLauncherPerso/settings.json`
-(créé au premier lancement).
+`ModpackZipUrl` n'est **pas** préconfiguré dans le code source (dépôt public : aucune IP/URL privée
+n'y est stockée) : il faut le renseigner soi-même dans `%AppData%/MinecraftLauncherPerso/settings.json`
+(créé au premier lancement, avec les autres valeurs par défaut) avant de pouvoir jouer, sous la forme :
+
+```json
+{
+  "ModpackZipUrl": "http://<ip-ou-domaine-du-vps>/modpack/Algaron-modded.zip"
+}
+```
+
+Sans cette valeur, la synchro échoue avec une erreur explicite ("ModpackZipUrl n'est pas configuré").
+On peut aussi y ajuster la RAM (`MinRamMb`/`MaxRamMb`) ou le dossier de jeu (`GameDirectory`) sans
+passer par l'UI.

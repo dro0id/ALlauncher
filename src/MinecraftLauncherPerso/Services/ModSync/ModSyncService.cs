@@ -8,8 +8,8 @@ namespace MinecraftLauncherPerso.Services.ModSync;
 
 /// <summary>
 /// Synchronise le pack de mods/config depuis une archive .zip unique hébergée sur le VPS
-/// (ex. http://185.185.82.180/modpack/Algaron-modded.zip), qui doit contenir mods/ et config/
-/// à sa racine (mêmes noms de dossiers qu'un .minecraft classique).
+/// (ex. https://exemple.tld/modpack/Algaron-modded.zip, configurée dans settings.json),
+/// qui doit contenir mods/ et config/ à sa racine (mêmes noms de dossiers qu'un .minecraft classique).
 ///
 /// Ne retélécharge que si le fichier a changé côté serveur : une requête HEAD récupère
 /// ETag/Last-Modified/Content-Length, comparés à la dernière synchro réussie (mise en cache
