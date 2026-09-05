@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace MinecraftLauncherPerso.Models;
 
 /// <summary>Préférences utilisateur persistées entre deux lancements (settings.json).</summary>
