@@ -142,8 +142,13 @@ que de simplement remonter un code d'erreur brut.
 ### Créer l'application Azure AD (obligatoire, à faire une seule fois)
 
 Minecraft/Xbox Live n'acceptent que des tokens émis pour une application cliente explicitement
-enregistrée : il n'existe pas de "client ID" générique réutilisable par un launcher tiers. Il faut
-donc en créer une (gratuit, ~5 minutes) :
+enregistrée : il n'existe pas de "client ID" générique réutilisable par un launcher tiers. **Déjà
+fait** : un seul Client ID est nécessaire pour tout le groupe, il est préconfiguré par défaut dans
+`LauncherSettings.MicrosoftClientId`. Chaque joueur se connecte ensuite avec son propre compte
+Microsoft/Xbox — seul le Client ID (qui identifie l'application, pas les comptes) est partagé.
+
+Pour référence, si ce Client ID doit un jour être recréé (compte Azure changé, app supprimée...),
+voici la procédure (gratuit, ~5 minutes) :
 
 1. Aller sur [portal.azure.com](https://portal.azure.com) → **Azure Active Directory** (ou
    **Microsoft Entra ID**) → **App registrations** → **New registration**.
@@ -191,18 +196,10 @@ dotnet run --project src/MinecraftLauncherPerso
 
 ## Configuration avant premier lancement
 
-`ModpackZipUrl` est déjà préconfigué sur `http://185.185.82.180/modpack/Algaron-modded.zip` par
-défaut. En revanche **`MicrosoftClientId` est vide par défaut et doit être renseigné avant de
-pouvoir se connecter** (voir section Authentification ci-dessus pour le créer) : sans ça, le
-launcher refuse de démarrer l'authentification avec un message explicite.
+`ModpackZipUrl` et `MicrosoftClientId` sont déjà préconfigurés par défaut (URL du VPS et
+Application (client) ID de l'app Azure AD créée pour ce launcher) : rien à configurer pour se
+connecter et jouer, tout le monde partage le même Client ID (voir section Authentification pour
+comprendre pourquoi un seul suffit pour tous les joueurs).
 
-Modifier `%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement) :
-
-```json
-{
-  "MicrosoftClientId": "<votre Application (client) ID Azure AD>"
-}
-```
-
-Les autres champs (RAM, URL du modpack, dossier de jeu) peuvent aussi y être ajustés sans passer
-par l'UI.
+Pour ajuster RAM, URL du modpack ou dossier de jeu sans passer par l'UI, modifier
+`%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement).

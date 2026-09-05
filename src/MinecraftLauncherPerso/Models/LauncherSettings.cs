@@ -16,7 +16,7 @@ public sealed class LauncherSettings
     /// "Application (client) ID" de l'app Azure AD enregistrée pour ce launcher (voir README pour
     /// la créer). Nécessaire pour l'authentification Microsoft/Xbox Live — sans ça, connexion impossible.
     /// </summary>
-    public string MicrosoftClientId { get; set; } = "";
+    public string MicrosoftClientId { get; set; } = "88cfb0e1-8c0a-46e4-abf9-9bf73b40eaf7";
 
     public int MinRamMb { get; set; } = 2048;
 
