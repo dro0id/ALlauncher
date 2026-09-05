@@ -40,7 +40,10 @@ public sealed class MicrosoftAuthService : IAuthService
         _httpClient = httpClient ?? new HttpClient();
     }
 
-    public async Task<MinecraftSession> GetActiveSessionAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<MinecraftSession> GetActiveSessionAsync(
+        IProgress<string>? progress = null,
+        IProgress<DeviceCodeInfo>? deviceCodeCallback = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_clientId))
         {
@@ -57,7 +60,7 @@ public sealed class MicrosoftAuthService : IAuthService
         EnableTokenCacheSerialization(app.UserTokenCache);
 
         progress?.Report("Connexion à Microsoft...");
-        var microsoftAccessToken = await AcquireMicrosoftTokenAsync(app, progress, cancellationToken);
+        var microsoftAccessToken = await AcquireMicrosoftTokenAsync(app, progress, deviceCodeCallback, cancellationToken);
 
         progress?.Report("Authentification Xbox Live...");
         var xbl = await AuthenticateWithXboxLiveAsync(microsoftAccessToken, cancellationToken);
@@ -74,7 +77,11 @@ public sealed class MicrosoftAuthService : IAuthService
         return new MinecraftSession(profile.Username, profile.Uuid, minecraftAccessToken);
     }
 
-    private async Task<string> AcquireMicrosoftTokenAsync(IPublicClientApplication app, IProgress<string>? progress, CancellationToken cancellationToken)
+    private async Task<string> AcquireMicrosoftTokenAsync(
+        IPublicClientApplication app,
+        IProgress<string>? progress,
+        IProgress<DeviceCodeInfo>? deviceCodeCallback,
+        CancellationToken cancellationToken)
     {
         var accounts = await app.GetAccountsAsync();
         var account = accounts.FirstOrDefault();
@@ -95,6 +102,7 @@ public sealed class MicrosoftAuthService : IAuthService
         var result = await app.AcquireTokenWithDeviceCode(Scopes, deviceCode =>
         {
             progress?.Report(deviceCode.Message);
+            deviceCodeCallback?.Report(new DeviceCodeInfo(deviceCode.Message, deviceCode.VerificationUrl, deviceCode.UserCode));
             TryOpenBrowser(deviceCode.VerificationUrl);
             return Task.CompletedTask;
         }).ExecuteAsync(cancellationToken);
