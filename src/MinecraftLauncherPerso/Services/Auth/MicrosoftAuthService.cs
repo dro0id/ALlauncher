@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -11,12 +10,14 @@ using Microsoft.Identity.Client;
 namespace MinecraftLauncherPerso.Services.Auth;
 
 /// <summary>
-/// Authentifie l'utilisateur directement via OAuth Microsoft (MSAL.NET, device code flow),
-/// puis échange le token Microsoft contre une session Minecraft via la chaîne standard
-/// Xbox Live -> XSTS -> Minecraft Services. Nécessite une application Azure AD enregistrée par
-/// l'utilisateur (voir README) : Minecraft/Xbox Live n'acceptent que des tokens émis pour une
-/// application cliente publique explicitement enregistrée, il n'existe pas de client ID générique
-/// réutilisable pour un launcher tiers.
+/// Authentifie l'utilisateur directement via OAuth Microsoft (MSAL.NET, flux interactif avec le
+/// navigateur système + redirection sur boucle locale — même expérience que CurseForge/Paladium :
+/// pas de code à recopier, juste se connecter dans l'onglet qui s'ouvre), puis échange le token
+/// Microsoft contre une session Minecraft via la chaîne standard Xbox Live -> XSTS -> Minecraft
+/// Services. Nécessite une application Azure AD enregistrée par l'utilisateur (voir README) :
+/// Minecraft/Xbox Live n'acceptent que des tokens émis pour une application cliente publique
+/// explicitement enregistrée, il n'existe pas de client ID générique réutilisable pour un launcher
+/// tiers.
 ///
 /// La session Microsoft (refresh token) est mise en cache localement (MSAL "TokenCacheHelper"
 /// standard) : une fois connecté une première fois, les lancements suivants renouvellent la
@@ -49,7 +50,6 @@ public sealed class MicrosoftAuthService : IAuthService
 
     public async Task<MinecraftSession> GetActiveSessionAsync(
         IProgress<string>? progress = null,
-        IProgress<DeviceCodeInfo>? deviceCodeCallback = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_clientId))
@@ -61,13 +61,13 @@ public sealed class MicrosoftAuthService : IAuthService
 
         var app = PublicClientApplicationBuilder.Create(_clientId)
             .WithAuthority(AzureCloudInstance.AzurePublic, "consumers")
-            .WithRedirectUri("https://login.microsoftonline.com/common/oauth2/nativeclient")
+            .WithRedirectUri("http://localhost")
             .Build();
 
         EnableTokenCacheSerialization(app.UserTokenCache);
 
         progress?.Report("Connexion à Microsoft...");
-        var microsoftAccessToken = await AcquireMicrosoftTokenAsync(app, progress, deviceCodeCallback, cancellationToken);
+        var microsoftAccessToken = await AcquireMicrosoftTokenAsync(app, progress, cancellationToken);
 
         progress?.Report("Authentification Xbox Live...");
         var xbl = await AuthenticateWithXboxLiveAsync(microsoftAccessToken, cancellationToken);
@@ -87,7 +87,6 @@ public sealed class MicrosoftAuthService : IAuthService
     private async Task<string> AcquireMicrosoftTokenAsync(
         IPublicClientApplication app,
         IProgress<string>? progress,
-        IProgress<DeviceCodeInfo>? deviceCodeCallback,
         CancellationToken cancellationToken)
     {
         var accounts = await app.GetAccountsAsync();
@@ -106,13 +105,14 @@ public sealed class MicrosoftAuthService : IAuthService
             }
         }
 
-        var result = await app.AcquireTokenWithDeviceCode(Scopes, deviceCode =>
-        {
-            progress?.Report(deviceCode.Message);
-            deviceCodeCallback?.Report(new DeviceCodeInfo(deviceCode.Message, deviceCode.VerificationUrl, deviceCode.UserCode));
-            TryOpenBrowser(deviceCode.VerificationUrl);
-            return Task.CompletedTask;
-        }).ExecuteAsync(cancellationToken);
+        progress?.Report("Ouverture du navigateur pour la connexion Microsoft...");
+
+        // Navigateur système + redirection sur boucle locale (http://localhost, port choisi
+        // automatiquement par MSAL) : MSAL ouvre le navigateur par défaut et intercepte la
+        // redirection lui-même, sans WebView2 ni code à recopier.
+        var result = await app.AcquireTokenInteractive(Scopes)
+            .WithUseEmbeddedWebView(false)
+            .ExecuteAsync(cancellationToken);
 
         return result.AccessToken;
     }
@@ -142,18 +142,6 @@ public sealed class MicrosoftAuthService : IAuthService
 
             File.WriteAllBytes(_tokenCachePath, args.TokenCache.SerializeMsalV3());
         });
-    }
-
-    private static void TryOpenBrowser(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch
-        {
-            // Pas grave si l'ouverture automatique échoue : l'URL est aussi dans le message affiché.
-        }
     }
 
     private async Task<(string Token, string UserHash)> AuthenticateWithXboxLiveAsync(string microsoftAccessToken, CancellationToken cancellationToken)

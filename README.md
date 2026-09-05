@@ -16,7 +16,7 @@ Launcher WPF (.NET / C#) pour un serveur Minecraft privé (8 joueurs max), basé
 1. Vérifie/installe Java 8 (build Temurin/Adoptium si absent) — **implémenté**
 2. Installe Forge 1.16.5-36.2.34 via CmlLib.Core.Installer.Forge — **implémenté**
 3. Synchronise `mods/` et `config/` depuis le VPS (par hash, pas à chaque lancement) — **implémenté**
-4. Authentifie le joueur via OAuth Microsoft (device code flow) puis Xbox Live/XSTS — **implémenté**
+4. Authentifie le joueur via OAuth Microsoft (navigateur système) puis Xbox Live/XSTS — **implémenté**
 5. Lance le jeu avec le bon classpath Forge et la RAM configurée — **implémenté**
 
 Pas de gestion multi-comptes : usage privé entre amis, un compte Microsoft actif par session de jeu.
@@ -45,7 +45,7 @@ Pas de gestion multi-comptes : usage privé entre amis, un compte Microsoft acti
 │           ├── ModSync/                    # synchro du modpack .zip depuis le VPS (ETag/Last-Modified)
 │           │   ├── IModSyncService.cs
 │           │   └── ModSyncService.cs
-│           ├── Auth/                       # OAuth Microsoft (device code) -> Xbox Live -> XSTS -> Minecraft
+│           ├── Auth/                       # OAuth Microsoft (navigateur système) -> Xbox Live -> XSTS -> Minecraft
 │           │   ├── IAuthService.cs
 │           │   └── MicrosoftAuthService.cs
 │           ├── Launch/                     # construction + démarrage du process Forge/Minecraft
@@ -115,13 +115,16 @@ directement dans `GameDirectory`, en écrasant les fichiers existants.
 Fichier : `src/MinecraftLauncherPerso/Services/Auth/MicrosoftAuthService.cs`
 
 Le launcher ne dépend plus du launcher officiel Minecraft (ni de `launcher_accounts.json`) : il
-s'authentifie lui-même directement auprès de Microsoft, via MSAL.NET (device code flow), puis
-échange le token obtenu contre une session Minecraft via la chaîne standard :
+s'authentifie lui-même directement auprès de Microsoft, via MSAL.NET avec le **navigateur système**
+(la même expérience que CurseForge/Paladium : pas de code à recopier, juste se connecter dans
+l'onglet qui s'ouvre), puis échange le token obtenu contre une session Minecraft via la chaîne
+standard :
 
-1. **Microsoft (MSAL.NET, device code flow)** : au premier lancement (ou si la session en cache a
-   expiré), le launcher affiche un message du type *"ouvrez https://microsoft.com/link et entrez le
-   code ABCD-EFGH"* dans le journal de statut, et ouvre automatiquement le navigateur par défaut sur
-   cette page. Une fois connecté dans le navigateur, le launcher récupère le token Microsoft.
+1. **Microsoft (MSAL.NET, navigateur système + redirection sur boucle locale)** : au premier
+   lancement (ou si la session en cache a expiré), le launcher ouvre le navigateur par défaut sur la
+   page de connexion Microsoft. Une fois connecté, MSAL intercepte lui-même la redirection via un
+   petit serveur HTTP local temporaire (`http://localhost:<port aléatoire>`) et récupère le token —
+   aucune action côté launcher, aucun code à saisir.
 2. **Xbox Live** (`user.auth.xboxlive.com/user/authenticate`) puis **XSTS**
    (`xsts.auth.xboxlive.com/xsts/authorize`) : échange le token Microsoft contre un token Xbox Live
    autorisé pour Minecraft.
@@ -154,11 +157,16 @@ voici la procédure (gratuit, ~5 minutes) :
    **Microsoft Entra ID**) → **App registrations** → **New registration**.
 2. Nom libre (ex. "Launcher Algaron"), **Supported account types** = *"Personal Microsoft accounts
    only"*, pas de Redirect URI à cette étape → **Register**.
+   - Si l'app existe déjà mais a été créée en "Single tenant" par défaut : **Authentication** →
+     menu déroulant **Supported account types** → sélectionner **"Comptes personnels uniquement"**.
+     Si Azure refuse ce changement avec une erreur sur `accessTokenAcceptedVersion` /
+     `requestedAccessTokenVersion`, éditer le **Manifest** et forcer `"requestedAccessTokenVersion": 2`
+     avant de réessayer.
 3. Copier l'**Application (client) ID** affiché sur la page — c'est la valeur à mettre dans
    `MicrosoftClientId` (voir plus bas).
 4. Aller dans **Authentication** (menu de gauche) → **Add a platform** → **Mobile and desktop
-   applications** → cocher `https://login.microsoftonline.com/common/oauth2/nativeclient` →
-   **Configure**.
+   applications** → cocher **`http://localhost`** (sans port : MSAL en choisit un au hasard à
+   l'exécution) → **Configure**.
 5. Toujours dans **Authentication**, activer **"Allow public client flows"** = **Yes**, puis
    **Save**.
 

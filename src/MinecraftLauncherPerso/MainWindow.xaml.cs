@@ -81,10 +81,9 @@ public partial class MainWindow : Window
             var syncProgress = new Progress<string>(AppendLog);
             await _modSyncService.SyncAsync(_settings.ModpackZipUrl, _settings.GameDirectory, syncProgress);
 
-            // 4. Authentification Microsoft (device code la première fois, silencieuse ensuite)
+            // 4. Authentification Microsoft (navigateur système la première fois, silencieuse ensuite)
             var authProgress = new Progress<string>(AppendLog);
-            var deviceCodeCallback = new Progress<DeviceCodeInfo>(ShowDeviceCodePopup);
-            var session = await _authService.GetActiveSessionAsync(authProgress, deviceCodeCallback);
+            var session = await _authService.GetActiveSessionAsync(authProgress);
             AppendLog($"Connecté en tant que {session.Username}.");
 
             // 5. Lancement
@@ -115,25 +114,5 @@ public partial class MainWindow : Window
         // thread d'arrière-plan (ex. lecture de la sortie du jeu) — pas besoin de Dispatcher ici.
         StatusLogTextBox.AppendText(message + Environment.NewLine);
         StatusLogTextBox.ScrollToEnd();
-    }
-
-    private void ShowDeviceCodePopup(DeviceCodeInfo info)
-    {
-        try
-        {
-            Clipboard.SetText(info.UserCode);
-        }
-        catch
-        {
-            // Presse-papiers indisponible : pas grave, le code reste visible dans la boîte de dialogue.
-        }
-
-        MessageBox.Show(
-            this,
-            $"Code à entrer : {info.UserCode}\n\n(déjà copié dans le presse-papiers)\n\n" +
-            $"Le navigateur s'est ouvert sur :\n{info.VerificationUrl}\n\nCollez-y ce code pour vous connecter.",
-            "Connexion Microsoft requise",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
     }
 }
