@@ -3,8 +3,9 @@ namespace MinecraftLauncherPerso.Services.ModSync;
 public interface IModSyncService
 {
     /// <summary>
-    /// Synchronise les dossiers mods/ et config/ depuis le VPS : ne télécharge que si un manifeste
-    /// distant (hash/version) diffère de l'état local, pour éviter de re-télécharger à chaque lancement.
+    /// Synchronise le pack de mods/config depuis une archive .zip unique hébergée sur le VPS
+    /// (ex. http://vps/modpack/Algaron-modded.zip). Ne la retélécharge que si elle a changé
+    /// côté serveur depuis la dernière synchro, pas à chaque lancement.
     /// </summary>
-    Task SyncAsync(string modsServerBaseUrl, string gameDirectory, IProgress<string>? progress = null, CancellationToken cancellationToken = default);
+    Task SyncAsync(string modpackZipUrl, string gameDirectory, IProgress<string>? progress = null, CancellationToken cancellationToken = default);
 }

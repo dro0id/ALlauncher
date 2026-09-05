@@ -1,22 +1,24 @@
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
-using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MinecraftLauncherPerso.Services.ModSync;
 
 /// <summary>
-/// Synchronise mods/ et config/ depuis un manifeste JSON hébergé sur le VPS
-/// (GET {modsServerBaseUrl}/manifest.json). Ne télécharge que les fichiers absents ou dont le
-/// hash a changé depuis la dernière synchro : la comparaison se fait contre un manifeste local
-/// mis en cache (pas en re-hashant tout le disque à chaque lancement), avec juste une vérification
-/// d'existence du fichier en plus du hash. Supprime aussi les fichiers qui ne sont plus référencés
-/// par le manifeste distant (mod retiré du pack).
+/// Synchronise le pack de mods/config depuis une archive .zip unique hébergée sur le VPS
+/// (ex. http://185.185.82.180/modpack/Algaron-modded.zip), qui doit contenir mods/ et config/
+/// à sa racine (mêmes noms de dossiers qu'un .minecraft classique).
+///
+/// Ne retélécharge que si le fichier a changé côté serveur : une requête HEAD récupère
+/// ETag/Last-Modified/Content-Length, comparés à la dernière synchro réussie (mise en cache
+/// localement) — pas de re-téléchargement à chaque lancement. Si le serveur ne supporte pas
+/// HEAD (config VPS basique), on retélécharge par prudence plutôt que d'échouer.
 /// </summary>
 public sealed class ModSyncService : IModSyncService
 {
-    private const string ManifestFileName = "manifest.json";
-    private const string LocalCacheFileName = "launcher-mods-manifest.json";
+    private const string CacheFileName = "launcher-modpack-cache.json";
 
     private readonly HttpClient _httpClient;
 
@@ -26,59 +28,117 @@ public sealed class ModSyncService : IModSyncService
     }
 
     public async Task SyncAsync(
-        string modsServerBaseUrl,
+        string modpackZipUrl,
         string gameDirectory,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(modsServerBaseUrl))
+        if (string.IsNullOrWhiteSpace(modpackZipUrl))
         {
             throw new InvalidOperationException(
-                "ModsServerBaseUrl n'est pas configuré (settings.json) : impossible de synchroniser mods/config.");
+                "ModpackZipUrl n'est pas configuré (settings.json) : impossible de synchroniser le modpack.");
         }
 
-        progress?.Report("Vérification des mises à jour de mods/config...");
+        progress?.Report("Vérification de la version du modpack...");
 
-        var remoteManifest = await DownloadManifestAsync(modsServerBaseUrl, cancellationToken);
-        var cachePath = Path.Combine(gameDirectory, LocalCacheFileName);
-        var cachedManifest = LoadCachedManifest(cachePath);
-        var cachedByPath = cachedManifest?.Files.ToDictionary(f => f.Path) ?? new Dictionary<string, ModFileEntry>();
-
-        var toDownload = remoteManifest.Files.Where(entry =>
+        RemoteZipMetadata? remoteMetadata;
+        try
         {
-            var localFilePath = Path.Combine(gameDirectory, entry.Path);
-            var upToDate = cachedByPath.TryGetValue(entry.Path, out var cachedEntry)
-                && string.Equals(cachedEntry.Sha256, entry.Sha256, StringComparison.OrdinalIgnoreCase)
-                && File.Exists(localFilePath);
-
-            return !upToDate;
-        }).ToList();
-
-        for (var i = 0; i < toDownload.Count; i++)
+            remoteMetadata = await FetchRemoteMetadataAsync(modpackZipUrl, cancellationToken);
+        }
+        catch (HttpRequestException)
         {
-            var entry = toDownload[i];
-            progress?.Report($"Téléchargement {i + 1}/{toDownload.Count} : {entry.Path}");
-            await DownloadFileAsync(modsServerBaseUrl, entry, gameDirectory, cancellationToken);
+            // Serveur ne supportant peut-être pas HEAD : on retélécharge par prudence.
+            remoteMetadata = null;
         }
 
-        RemoveObsoleteFiles(gameDirectory, remoteManifest, cachedManifest);
-        SaveManifest(cachePath, remoteManifest);
+        var cachePath = Path.Combine(gameDirectory, CacheFileName);
+        var cached = LoadCache(cachePath);
 
-        progress?.Report(toDownload.Count == 0
-            ? "mods/ et config/ déjà à jour."
-            : $"{toDownload.Count} fichier(s) mis à jour.");
+        var upToDate = remoteMetadata is not null
+            && cached is not null
+            && cached.Matches(remoteMetadata)
+            && Directory.Exists(Path.Combine(gameDirectory, "mods"));
+
+        if (upToDate)
+        {
+            progress?.Report("Modpack déjà à jour.");
+            return;
+        }
+
+        progress?.Report("Téléchargement du modpack...");
+        var tempZipPath = Path.Combine(Path.GetTempPath(), $"modpack-{Guid.NewGuid():N}.zip");
+
+        try
+        {
+            await DownloadAsync(modpackZipUrl, tempZipPath, progress, cancellationToken);
+
+            progress?.Report("Extraction du modpack (mods/config)...");
+            Directory.CreateDirectory(gameDirectory);
+            ZipFile.ExtractToDirectory(tempZipPath, gameDirectory, overwriteFiles: true);
+        }
+        finally
+        {
+            if (File.Exists(tempZipPath))
+            {
+                File.Delete(tempZipPath);
+            }
+        }
+
+        if (remoteMetadata is not null)
+        {
+            SaveCache(cachePath, remoteMetadata);
+        }
+
+        progress?.Report("Modpack mis à jour.");
     }
 
-    private async Task<ModManifest> DownloadManifestAsync(string modsServerBaseUrl, CancellationToken cancellationToken)
+    private async Task<RemoteZipMetadata> FetchRemoteMetadataAsync(string url, CancellationToken cancellationToken)
     {
-        var manifestUrl = CombineUrl(modsServerBaseUrl, ManifestFileName);
+        using var request = new HttpRequestMessage(HttpMethod.Head, url);
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
 
-        await using var stream = await _httpClient.GetStreamAsync(manifestUrl, cancellationToken);
-        return await JsonSerializer.DeserializeAsync<ModManifest>(stream, cancellationToken: cancellationToken)
-            ?? throw new InvalidOperationException($"Manifeste invalide reçu depuis {manifestUrl}.");
+        return new RemoteZipMetadata
+        {
+            ETag = response.Headers.ETag?.Tag,
+            LastModified = response.Content.Headers.LastModified,
+            ContentLength = response.Content.Headers.ContentLength,
+        };
     }
 
-    private static ModManifest? LoadCachedManifest(string cachePath)
+    private async Task DownloadAsync(string url, string destinationPath, IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+        await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+
+        var buffer = new byte[81920];
+        long totalRead = 0;
+        int bytesRead;
+        var lastReportedPercent = -1;
+
+        while ((bytesRead = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+            totalRead += bytesRead;
+
+            if (totalBytes > 0)
+            {
+                var percent = (int)(totalRead * 100 / totalBytes);
+                if (percent != lastReportedPercent)
+                {
+                    lastReportedPercent = percent;
+                    progress?.Report($"Téléchargement du modpack... {percent}%");
+                }
+            }
+        }
+    }
+
+    private static RemoteZipMetadata? LoadCache(string cachePath)
     {
         if (!File.Exists(cachePath))
         {
@@ -87,16 +147,16 @@ public sealed class ModSyncService : IModSyncService
 
         try
         {
-            return JsonSerializer.Deserialize<ModManifest>(File.ReadAllText(cachePath));
+            return JsonSerializer.Deserialize<RemoteZipMetadata>(File.ReadAllText(cachePath));
         }
         catch (JsonException)
         {
-            // Cache local corrompu : on ignore, tout sera re-téléchargé et le cache sera recréé.
+            // Cache local corrompu : on ignore, le modpack sera retéléchargé et le cache recréé.
             return null;
         }
     }
 
-    private static void SaveManifest(string cachePath, ModManifest manifest)
+    private static void SaveCache(string cachePath, RemoteZipMetadata metadata)
     {
         var directory = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrEmpty(directory))
@@ -104,71 +164,29 @@ public sealed class ModSyncService : IModSyncService
             Directory.CreateDirectory(directory);
         }
 
-        File.WriteAllText(cachePath, JsonSerializer.Serialize(manifest));
+        File.WriteAllText(cachePath, JsonSerializer.Serialize(metadata));
     }
 
-    private async Task DownloadFileAsync(string modsServerBaseUrl, ModFileEntry entry, string gameDirectory, CancellationToken cancellationToken)
+    private sealed class RemoteZipMetadata
     {
-        var fileUrl = CombineUrl(modsServerBaseUrl, entry.Url);
-        var destinationPath = Path.Combine(gameDirectory, entry.Path);
+        [JsonPropertyName("etag")]
+        public string? ETag { get; set; }
 
-        var directory = Path.GetDirectoryName(destinationPath);
-        if (!string.IsNullOrEmpty(directory))
+        [JsonPropertyName("lastModified")]
+        public DateTimeOffset? LastModified { get; set; }
+
+        [JsonPropertyName("contentLength")]
+        public long? ContentLength { get; set; }
+
+        public bool Matches(RemoteZipMetadata other)
         {
-            Directory.CreateDirectory(directory);
-        }
-
-        var tempPath = destinationPath + ".tmp";
-        await using (var responseStream = await _httpClient.GetStreamAsync(fileUrl, cancellationToken))
-        await using (var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            await responseStream.CopyToAsync(fileStream, cancellationToken);
-        }
-
-        VerifyHash(tempPath, entry);
-
-        File.Move(tempPath, destinationPath, overwrite: true);
-    }
-
-    private static void VerifyHash(string filePath, ModFileEntry entry)
-    {
-        using var sha256 = SHA256.Create();
-        using var stream = File.OpenRead(filePath);
-        var hash = Convert.ToHexString(sha256.ComputeHash(stream)).ToLowerInvariant();
-
-        if (!string.Equals(hash, entry.Sha256, StringComparison.OrdinalIgnoreCase))
-        {
-            File.Delete(filePath);
-            throw new InvalidOperationException(
-                $"Hash invalide pour {entry.Path} après téléchargement (attendu {entry.Sha256}, obtenu {hash}). " +
-                "Fichier VPS corrompu ou manifeste désynchronisé.");
-        }
-    }
-
-    private static void RemoveObsoleteFiles(string gameDirectory, ModManifest remoteManifest, ModManifest? cachedManifest)
-    {
-        if (cachedManifest is null)
-        {
-            return;
-        }
-
-        var remotePaths = remoteManifest.Files.Select(f => f.Path).ToHashSet();
-
-        foreach (var cachedEntry in cachedManifest.Files)
-        {
-            if (remotePaths.Contains(cachedEntry.Path))
+            // Si le serveur fournit un ETag, c'est le signal le plus fiable : on s'y fie seul.
+            if (ETag is not null || other.ETag is not null)
             {
-                continue;
+                return ETag == other.ETag;
             }
 
-            var obsoletePath = Path.Combine(gameDirectory, cachedEntry.Path);
-            if (File.Exists(obsoletePath))
-            {
-                File.Delete(obsoletePath);
-            }
+            return LastModified == other.LastModified && ContentLength == other.ContentLength;
         }
     }
-
-    private static string CombineUrl(string baseUrl, string relativePath)
-        => $"{baseUrl.TrimEnd('/')}/{relativePath.TrimStart('/')}";
 }

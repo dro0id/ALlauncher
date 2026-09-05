@@ -9,8 +9,8 @@ public sealed class LauncherSettings
 
     public string ForgeVersion { get; set; } = "36.2.34";
 
-    /// <summary>URL de base du VPS hébergeant manifest.json + les fichiers mods/config (ex. https://vps.example.com/pack).</summary>
-    public string ModsServerBaseUrl { get; set; } = "";
+    /// <summary>URL directe de l'archive .zip du modpack (mods/ + config/ à sa racine) hébergée sur le VPS.</summary>
+    public string ModpackZipUrl { get; set; } = "http://185.185.82.180/modpack/Algaron-modded.zip";
 
     public int MinRamMb { get; set; } = 2048;
 

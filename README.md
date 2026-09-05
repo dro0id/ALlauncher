@@ -43,10 +43,9 @@ Pas de gestion multi-comptes : usage privé entre amis, un seul compte par machi
 │           ├── Forge/                      # installation Forge (CmlLib.Core.Installer.Forge)
 │           │   ├── IForgeManager.cs
 │           │   └── ForgeManager.cs
-│           ├── ModSync/                    # synchro mods/config depuis le VPS par manifeste+hash
+│           ├── ModSync/                    # synchro du modpack .zip depuis le VPS (ETag/Last-Modified)
 │           │   ├── IModSyncService.cs
-│           │   ├── ModSyncService.cs
-│           │   └── ModManifest.cs
+│           │   └── ModSyncService.cs
 │           ├── Auth/                       # lecture session launcher officiel
 │           │   ├── IAuthService.cs
 │           │   └── MinecraftAuthService.cs
@@ -100,30 +99,17 @@ Forge dépend.
 
 Fichier : `src/MinecraftLauncherPerso/Services/ModSync/ModSyncService.cs`
 
-Le launcher attend un manifeste JSON à `{ModsServerBaseUrl}/manifest.json` sur le VPS, à héberger
-et régénérer vous-même à chaque mise à jour du pack :
+Le launcher pointe sur une archive `.zip` unique du pack complet, hébergée sur le VPS
+(`ModpackZipUrl`, par défaut `http://185.185.82.180/modpack/Algaron-modded.zip`), qui doit
+contenir `mods/` et `config/` **à sa racine** (mêmes noms de dossiers qu'un `.minecraft`
+classique) : à chaque mise à jour du pack, remplacez ce zip sur le VPS.
 
-```json
-{
-  "version": "2026-01-01",
-  "files": [
-    { "path": "mods/create-1.16.5-0.3.2g.jar", "sha256": "<sha256 hex>", "url": "mods/create-1.16.5-0.3.2g.jar" },
-    { "path": "config/create/common.toml", "sha256": "<sha256 hex>", "url": "config/create/common.toml" }
-  ]
-}
-```
-
-- `path` : chemin relatif au dossier de jeu (`GameDirectory`) où écrire le fichier.
-- `sha256` : hash du contenu, utilisé pour décider si le fichier doit être (re)téléchargé, et pour
-  vérifier l'intégrité après téléchargement.
-- `url` : chemin relatif à `ModsServerBaseUrl` pour le télécharger (identique à `path` si vos mods
-  et votre config sont servis directement à cette URL).
-
-À chaque lancement, le launcher télécharge ce manifeste puis le compare à un manifeste local mis
-en cache (`{GameDirectory}/launcher-mods-manifest.json`, écrit par le launcher lui-même) : seuls
-les fichiers absents ou dont le hash a changé sont retéléchargés (pas de re-hash de tout le disque
-à chaque lancement). Les fichiers qui ne sont plus référencés par le manifeste distant sont
-supprimés localement (mod retiré du pack).
+Avant de (re)télécharger, le launcher envoie une requête HTTP `HEAD` sur cette URL et compare
+`ETag`/`Last-Modified`/`Content-Length` à la dernière synchro réussie (mise en cache localement
+dans `{GameDirectory}/launcher-modpack-cache.json`) : si rien n'a changé côté serveur, il ne
+retélécharge pas à chaque lancement. Si le serveur ne renvoie pas ces en-têtes (ou ne supporte pas
+`HEAD`), le launcher retélécharge par prudence plutôt que d'échouer. Le zip est ensuite extrait
+directement dans `GameDirectory`, en écrasant les fichiers existants.
 
 ## Authentification (session du launcher officiel)
 
@@ -171,6 +157,6 @@ dotnet run --project src/MinecraftLauncherPerso
 
 ## Configuration avant premier lancement
 
-Modifier `%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement avec les
-valeurs par défaut) pour renseigner au minimum `ModsServerBaseUrl` (URL de votre VPS où est
-hébergé `manifest.json`).
+`ModpackZipUrl` est déjà préconfigué sur `http://185.185.82.180/modpack/Algaron-modded.zip` par
+défaut. Pour changer d'URL (ou de RAM par défaut) sans passer par l'UI, modifier
+`%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement).

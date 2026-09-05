@@ -79,7 +79,7 @@ public partial class MainWindow : Window
 
             // 3. Synchronisation mods/config depuis le VPS
             var syncProgress = new Progress<string>(AppendLog);
-            await _modSyncService.SyncAsync(_settings.ModsServerBaseUrl, _settings.GameDirectory, syncProgress);
+            await _modSyncService.SyncAsync(_settings.ModpackZipUrl, _settings.GameDirectory, syncProgress);
 
             // 4. Session du launcher officiel déjà connecté
             AppendLog("Lecture de la session du launcher officiel...");
