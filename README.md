@@ -16,10 +16,21 @@ Launcher WPF (.NET / C#) pour un serveur Minecraft privé (8 joueurs max), basé
 1. Vérifie/installe Java 8 (build Temurin/Adoptium si absent) — **implémenté**
 2. Installe Forge 1.16.5-36.2.34 via CmlLib.Core.Installer.Forge — **implémenté**
 3. Synchronise `mods/` et `config/` depuis le VPS (par hash, pas à chaque lancement) — **implémenté**
-4. Authentifie le joueur via OAuth Microsoft (navigateur système) puis Xbox Live/XSTS — **implémenté**
+4. Réutilise la session déjà connectée du launcher officiel (`launcher_accounts.json`) — **implémenté**
 5. Lance le jeu avec le bon classpath Forge et la RAM configurée — **implémenté**
 
-Pas de gestion multi-comptes : usage privé entre amis, un compte Microsoft actif par session de jeu.
+Pas d'implémentation OAuth Microsoft pour l'instant (voir note ci-dessous) : le launcher lit la
+session déjà authentifiée du launcher officiel. Pas de gestion multi-comptes : usage privé entre
+amis, un seul compte par machine.
+
+> **Note (2026-09) :** une version avec authentification OAuth Microsoft directe (MSAL.NET +
+> Xbox Live/XSTS, sans dépendre du launcher officiel) a été développée et testée, mais Minecraft
+> exige désormais une **approbation manuelle par Microsoft** de toute nouvelle application Azure AD
+> avant d'autoriser l'appel à `login_with_xbox` (formulaire : https://aka.ms/mce-reviewappid,
+> délai variable — de 24h à plusieurs mois selon les témoignages). En attendant cette approbation,
+> le launcher est revenu à la lecture de la session du launcher officiel ci-dessous. Le code OAuth
+> complet reste dans l'historique git (commits jusqu'à `961269e` / `5276172` sur la branche
+> `claude/minecraft-launcher-csharp-942eie`) et pourra être restauré une fois l'app approuvée.
 
 ## Structure du repo
 
@@ -45,9 +56,9 @@ Pas de gestion multi-comptes : usage privé entre amis, un compte Microsoft acti
 │           ├── ModSync/                    # synchro du modpack .zip depuis le VPS (ETag/Last-Modified)
 │           │   ├── IModSyncService.cs
 │           │   └── ModSyncService.cs
-│           ├── Auth/                       # OAuth Microsoft (navigateur système) -> Xbox Live -> XSTS -> Minecraft
+│           ├── Auth/                       # lecture session launcher officiel (launcher_accounts.json)
 │           │   ├── IAuthService.cs
-│           │   └── MicrosoftAuthService.cs
+│           │   └── MinecraftAuthService.cs
 │           ├── Launch/                     # construction + démarrage du process Forge/Minecraft
 │           │   ├── IGameLauncher.cs
 │           │   └── GameLauncher.cs
@@ -110,67 +121,20 @@ retélécharge pas à chaque lancement. Si le serveur ne renvoie pas ces en-têt
 `HEAD`), le launcher retélécharge par prudence plutôt que d'échouer. Le zip est ensuite extrait
 directement dans `GameDirectory`, en écrasant les fichiers existants.
 
-## Authentification (OAuth Microsoft)
+## Authentification (session du launcher officiel)
 
-Fichier : `src/MinecraftLauncherPerso/Services/Auth/MicrosoftAuthService.cs`
+Fichier : `src/MinecraftLauncherPerso/Services/Auth/MinecraftAuthService.cs`
 
-Le launcher ne dépend plus du launcher officiel Minecraft (ni de `launcher_accounts.json`) : il
-s'authentifie lui-même directement auprès de Microsoft, via MSAL.NET avec le **navigateur système**
-(la même expérience que CurseForge/Paladium : pas de code à recopier, juste se connecter dans
-l'onglet qui s'ouvre), puis échange le token obtenu contre une session Minecraft via la chaîne
-standard :
+Lit `%AppData%/.minecraft/launcher_accounts.json` : cherche le compte référencé par
+`activeAccountLocalId`, et en extrait `accessToken` + `minecraftProfile.name`/`.id` (pseudo et UUID
+réellement utilisés en jeu — le champ racine `username` du compte est l'identifiant Microsoft/email,
+pas le pseudo Minecraft). Lève une erreur explicite si le fichier est absent, si aucun compte actif
+n'est trouvé, ou si le token a une date d'expiration dépassée — dans ces cas, l'utilisateur doit
+rouvrir le launcher officiel et se reconnecter avant de relancer ce launcher.
 
-1. **Microsoft (MSAL.NET, navigateur système + redirection sur boucle locale)** : au premier
-   lancement (ou si la session en cache a expiré), le launcher ouvre le navigateur par défaut sur la
-   page de connexion Microsoft. Une fois connecté, MSAL intercepte lui-même la redirection via un
-   petit serveur HTTP local temporaire (`http://localhost:<port aléatoire>`) et récupère le token —
-   aucune action côté launcher, aucun code à saisir.
-2. **Xbox Live** (`user.auth.xboxlive.com/user/authenticate`) puis **XSTS**
-   (`xsts.auth.xboxlive.com/xsts/authorize`) : échange le token Microsoft contre un token Xbox Live
-   autorisé pour Minecraft.
-3. **Minecraft Services** (`api.minecraftservices.com/authentication/login_with_xbox`) : échange le
-   token XSTS contre le token d'accès Minecraft, puis récupère le pseudo/UUID réels via
-   `/minecraft/profile`.
-
-La session Microsoft (refresh token) est mise en cache localement
-(`%AppData%/MinecraftLauncherPerso/msal-cache.bin`, via le mécanisme de sérialisation standard de
-MSAL.NET) : une fois connecté une première fois, les lancements suivants renouvellent la session
-**en silence**, sans redemander de connexion interactive, tant que le refresh token Microsoft reste
-valide (généralement plusieurs mois).
-
-Des erreurs Xbox Live courantes sont traduites en messages clairs (pas de compte Xbox associé,
-compte enfant nécessitant une famille Microsoft, région non supportée, compte sans Minecraft) plutôt
-que de simplement remonter un code d'erreur brut.
-
-### Créer l'application Azure AD (obligatoire, à faire une seule fois)
-
-Minecraft/Xbox Live n'acceptent que des tokens émis pour une application cliente explicitement
-enregistrée : il n'existe pas de "client ID" générique réutilisable par un launcher tiers. **Déjà
-fait** : un seul Client ID est nécessaire pour tout le groupe, il est préconfiguré par défaut dans
-`LauncherSettings.MicrosoftClientId`. Chaque joueur se connecte ensuite avec son propre compte
-Microsoft/Xbox — seul le Client ID (qui identifie l'application, pas les comptes) est partagé.
-
-Pour référence, si ce Client ID doit un jour être recréé (compte Azure changé, app supprimée...),
-voici la procédure (gratuit, ~5 minutes) :
-
-1. Aller sur [portal.azure.com](https://portal.azure.com) → **Azure Active Directory** (ou
-   **Microsoft Entra ID**) → **App registrations** → **New registration**.
-2. Nom libre (ex. "Launcher Algaron"), **Supported account types** = *"Personal Microsoft accounts
-   only"*, pas de Redirect URI à cette étape → **Register**.
-   - Si l'app existe déjà mais a été créée en "Single tenant" par défaut : **Authentication** →
-     menu déroulant **Supported account types** → sélectionner **"Comptes personnels uniquement"**.
-     Si Azure refuse ce changement avec une erreur sur `accessTokenAcceptedVersion` /
-     `requestedAccessTokenVersion`, éditer le **Manifest** et forcer `"requestedAccessTokenVersion": 2`
-     avant de réessayer.
-3. Copier l'**Application (client) ID** affiché sur la page — c'est la valeur à mettre dans
-   `MicrosoftClientId` (voir plus bas).
-4. Aller dans **Authentication** (menu de gauche) → **Add a platform** → **Mobile and desktop
-   applications** → cocher **`http://localhost`** (sans port : MSAL en choisit un au hasard à
-   l'exécution) → **Configure**.
-5. Toujours dans **Authentication**, activer **"Allow public client flows"** = **Yes**, puis
-   **Save**.
-
-Renseigner ensuite `MicrosoftClientId` avec ce client ID (voir section Configuration ci-dessous).
+**Chaque joueur doit donc avoir installé le launcher officiel Minecraft et s'y être connecté au
+moins une fois** (ce qu'il doit de toute façon faire pour un compte légitime) avant d'utiliser ce
+launcher.
 
 ## Lancement du jeu
 
@@ -198,16 +162,8 @@ dotnet run --project src/MinecraftLauncherPerso
 > (`.github/workflows/build-windows.yml`) build le projet sur `windows-latest` à chaque push et
 > publie un exécutable en artifact — c'est le moyen de vérifier qu'un changement compile toujours.
 >
-> Le flux OAuth Microsoft/Xbox Live/XSTS (`MicrosoftAuthService`) n'a en revanche encore jamais été
-> testé en conditions réelles (nécessite un vrai compte Microsoft + une app Azure AD) : à valider
-> en priorité après avoir créé l'app Azure AD (voir section Authentification).
-
 ## Configuration avant premier lancement
 
-`ModpackZipUrl` et `MicrosoftClientId` sont déjà préconfigurés par défaut (URL du VPS et
-Application (client) ID de l'app Azure AD créée pour ce launcher) : rien à configurer pour se
-connecter et jouer, tout le monde partage le même Client ID (voir section Authentification pour
-comprendre pourquoi un seul suffit pour tous les joueurs).
-
-Pour ajuster RAM, URL du modpack ou dossier de jeu sans passer par l'UI, modifier
-`%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement).
+`ModpackZipUrl` est déjà préconfiguré par défaut (URL du VPS). Pour ajuster RAM, URL du modpack ou
+dossier de jeu sans passer par l'UI, modifier `%AppData%/MinecraftLauncherPerso/settings.json`
+(créé au premier lancement).

@@ -35,7 +35,7 @@ public partial class MainWindow : Window
         _javaManager = new JavaManager();
         _forgeManager = new ForgeManager();
         _modSyncService = new ModSyncService();
-        _authService = new MicrosoftAuthService(_settings.MicrosoftClientId);
+        _authService = new MinecraftAuthService();
         _gameLauncher = new GameLauncher();
 
         MaxRamTextBox.Text = _settings.MaxRamMb.ToString();
@@ -81,9 +81,9 @@ public partial class MainWindow : Window
             var syncProgress = new Progress<string>(AppendLog);
             await _modSyncService.SyncAsync(_settings.ModpackZipUrl, _settings.GameDirectory, syncProgress);
 
-            // 4. Authentification Microsoft (navigateur système la première fois, silencieuse ensuite)
-            var authProgress = new Progress<string>(AppendLog);
-            var session = await _authService.GetActiveSessionAsync(authProgress);
+            // 4. Session du launcher officiel déjà connecté
+            AppendLog("Lecture de la session du launcher officiel...");
+            var session = _authService.GetActiveSession();
             AppendLog($"Connecté en tant que {session.Username}.");
 
             // 5. Lancement
