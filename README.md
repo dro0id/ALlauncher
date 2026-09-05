@@ -192,16 +192,11 @@ dotnet run --project src/MinecraftLauncherPerso
 >
 ## Configuration avant premier lancement
 
-`ModpackZipUrl` n'est **pas** préconfiguré dans le code source (dépôt public : aucune IP/URL privée
-n'y est stockée) : il faut le renseigner soi-même dans `%AppData%/MinecraftLauncherPerso/settings.json`
-(créé au premier lancement, avec les autres valeurs par défaut) avant de pouvoir jouer, sous la forme :
+`ModpackZipUrl` est déjà préconfiguré par défaut (URL du VPS) : rien à faire pour jouer directement.
+Le dépôt étant public, cette valeur par défaut n'apparaît pas en clair dans le code source (stockée
+encodée en base64 dans `LauncherSettings.cs`, décodée au démarrage) pour ne pas exposer l'IP du VPS
+à quiconque parcourt le dépôt — ce n'est qu'une précaution légère (le launcher final l'utilise bien
+en clair au runtime), pas une vraie protection contre quelqu'un qui inspecterait l'exécutable.
 
-```json
-{
-  "ModpackZipUrl": "http://<ip-ou-domaine-du-vps>/modpack/Algaron-modded.zip"
-}
-```
-
-Sans cette valeur, la synchro échoue avec une erreur explicite ("ModpackZipUrl n'est pas configuré").
-On peut aussi y ajuster la RAM (`MinRamMb`/`MaxRamMb`) ou le dossier de jeu (`GameDirectory`) sans
-passer par l'UI.
+Pour ajuster RAM, URL du modpack (si le VPS change) ou dossier de jeu sans passer par l'UI, modifier
+`%AppData%/MinecraftLauncherPerso/settings.json` (créé au premier lancement).

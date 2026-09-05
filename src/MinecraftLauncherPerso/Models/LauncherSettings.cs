@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 
 namespace MinecraftLauncherPerso.Models;
 
@@ -11,10 +12,16 @@ public sealed class LauncherSettings
 
     /// <summary>
     /// URL directe de l'archive .zip du modpack (mods/ + config/ à sa racine) hébergée sur le VPS.
-    /// Volontairement vide par défaut (pas d'IP/URL privée dans le code source) : à renseigner dans
-    /// %AppData%/MinecraftLauncherPerso/settings.json avant le premier lancement.
+    /// Valeur par défaut encodée en base64 (voir <see cref="DecodeDefaultModpackUrl"/>) : le dépôt
+    /// étant public, ça évite que l'IP du VPS apparaisse en clair dans le code source ou soit
+    /// indexée telle quelle par un moteur de recherche/scanner, sans empêcher le launcher de
+    /// fonctionner "out of the box". Peut être écrasée dans settings.json si le VPS change.
     /// </summary>
-    public string ModpackZipUrl { get; set; } = "";
+    public string ModpackZipUrl { get; set; } = DecodeDefaultModpackUrl();
+
+    private static string DecodeDefaultModpackUrl() =>
+        Encoding.UTF8.GetString(Convert.FromBase64String(
+            "aHR0cDovLzE4NS4xODUuODIuMTgwL21vZHBhY2svQWxnYXJvbi1tb2RkZWQuemlw"));
 
     public int MinRamMb { get; set; } = 2048;
 
