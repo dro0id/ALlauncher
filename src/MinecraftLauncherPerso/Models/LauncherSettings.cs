@@ -7,13 +7,18 @@ public sealed class LauncherSettings
 
     public string ForgeVersion { get; set; } = "36.2.34";
 
-    /// <summary>URL de base du VPS hébergeant les archives mods.zip / config.zip.</summary>
+    /// <summary>URL de base du VPS hébergeant manifest.json + les fichiers mods/config (ex. https://vps.example.com/pack).</summary>
     public string ModsServerBaseUrl { get; set; } = "";
 
     public int MinRamMb { get; set; } = 2048;
 
     public int MaxRamMb { get; set; } = 6144;
 
-    /// <summary>Dossier .minecraft utilisé par ce launcher (peut être dédié, distinct de celui du launcher officiel).</summary>
-    public string GameDirectory { get; set; } = "";
+    /// <summary>
+    /// Dossier .minecraft utilisé par CE launcher pour le pack modé — volontairement distinct du
+    /// .minecraft du launcher officiel (qui, lui, n'est utilisé que pour lire la session active).
+    /// </summary>
+    public string GameDirectory { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "MinecraftLauncherPerso", "game");
 }

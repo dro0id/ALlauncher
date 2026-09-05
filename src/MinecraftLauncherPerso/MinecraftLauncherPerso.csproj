@@ -13,8 +13,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Gère l'installation de Forge et le lancement du jeu (classpath, arguments JVM/jeu). -->
-    <PackageReference Include="CmlLib.Core" Version="3.3.4" />
+    <!-- Gère la version vanilla, le classpath et le lancement du jeu (arguments JVM/jeu). -->
+    <PackageReference Include="CmlLib.Core" Version="4.0.6" />
+    <!-- Installation de Forge (mapping de version + téléchargement des libs Forge). -->
+    <PackageReference Include="CmlLib.Core.Installer.Forge" Version="1.1.1" />
   </ItemGroup>
 
 </Project>

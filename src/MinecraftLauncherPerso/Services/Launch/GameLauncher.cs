@@ -1,23 +1,36 @@
+using CmlLib.Core;
+using CmlLib.Core.Auth;
+using CmlLib.Core.ProcessBuilder;
 using MinecraftLauncherPerso.Services.Auth;
 
 namespace MinecraftLauncherPerso.Services.Launch;
 
-/// <summary>
-/// TODO (prochaine étape) : construire un MinecraftLauncher (CmlLib.Core) pointant sur gameDirectory,
-/// avec MSession.CreateOfflineSession/CreateSession selon la session récupérée, MLaunchOption pour
-/// MinimumRamMb/MaximumRamMb et JavaPath = javaExecutablePath, puis lancer le process forgeVersionId.
-/// </summary>
 public sealed class GameLauncher : IGameLauncher
 {
-    public Task LaunchAsync(
-        string javaExecutablePath,
-        string forgeVersionId,
-        string gameDirectory,
+    public async Task<ProcessWrapper> LaunchAsync(
+        MinecraftLauncher launcher,
+        string versionId,
         MinecraftSession session,
+        string javaExecutablePath,
         int minRamMb,
         int maxRamMb,
+        IProgress<string>? gameOutput = null,
         CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException("Lancement du jeu à implémenter (voir README, étape suivante).");
+        var mSession = new MSession(session.Username, session.AccessToken, session.Uuid);
+
+        var process = await launcher.BuildProcessAsync(versionId, new MLaunchOption
+        {
+            Session = mSession,
+            JavaPath = javaExecutablePath,
+            MinimumRamMb = minRamMb,
+            MaximumRamMb = maxRamMb,
+        });
+
+        var processWrapper = new ProcessWrapper(process);
+        processWrapper.OutputReceived += (_, line) => gameOutput?.Report(line);
+        processWrapper.StartWithEvents();
+
+        return processWrapper;
     }
 }
