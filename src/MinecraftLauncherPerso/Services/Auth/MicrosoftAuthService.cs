@@ -38,6 +38,13 @@ public sealed class MicrosoftAuthService : IAuthService
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "MinecraftLauncherPerso", "msal-cache.bin");
         _httpClient = httpClient ?? new HttpClient();
+
+        // Certains points de terminaison Xbox Live renvoient 403 aux requêtes sans User-Agent
+        // (traitées comme du trafic automatisé suspect) : on en fournit toujours un.
+        if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
+        {
+            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("MinecraftLauncherPerso/1.0");
+        }
     }
 
     public async Task<MinecraftSession> GetActiveSessionAsync(
@@ -164,7 +171,7 @@ public sealed class MicrosoftAuthService : IAuthService
         };
 
         using var response = await PostJsonAsync("https://user.auth.xboxlive.com/user/authenticate", payload, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "Xbox Live (user/authenticate)", cancellationToken);
 
         var result = await DeserializeAsync<XboxTokenResponse>(response, cancellationToken)
             ?? throw new InvalidOperationException("Réponse Xbox Live invalide.");
@@ -197,7 +204,7 @@ public sealed class MicrosoftAuthService : IAuthService
             throw BuildXstsError(error?.XErr);
         }
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "XSTS (xsts/authorize)", cancellationToken);
 
         var result = await DeserializeAsync<XboxTokenResponse>(response, cancellationToken)
             ?? throw new InvalidOperationException("Réponse XSTS invalide.");
@@ -213,7 +220,7 @@ public sealed class MicrosoftAuthService : IAuthService
         var payload = new MinecraftLoginRequest { IdentityToken = $"XBL3.0 x={userHash};{xstsToken}" };
 
         using var response = await PostJsonAsync("https://api.minecraftservices.com/authentication/login_with_xbox", payload, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "Minecraft (login_with_xbox)", cancellationToken);
 
         var result = await DeserializeAsync<MinecraftLoginResponse>(response, cancellationToken)
             ?? throw new InvalidOperationException("Réponse de connexion Minecraft invalide.");
@@ -234,7 +241,7 @@ public sealed class MicrosoftAuthService : IAuthService
                 "Ce compte Microsoft ne possède pas Minecraft (Java Edition). Connectez-vous avec le bon compte.");
         }
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "Minecraft (profile)", cancellationToken);
 
         var profile = await DeserializeAsync<MinecraftProfileResponse>(response, cancellationToken)
             ?? throw new InvalidOperationException("Réponse de profil Minecraft invalide.");
@@ -251,6 +258,23 @@ public sealed class MicrosoftAuthService : IAuthService
         request.Headers.Add("x-xbl-contract-version", "1");
 
         return await _httpClient.SendAsync(request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Remplace EnsureSuccessStatusCode() par une erreur qui nomme l'étape et inclut le corps de la
+    /// réponse : "403 (Forbidden)" seul ne dit pas quel appel (Xbox Live/XSTS/Minecraft) a échoué
+    /// ni pourquoi, ce qui rend le diagnostic très difficile côté utilisateur final.
+    /// </summary>
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, string stepName, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new InvalidOperationException(
+            $"Échec de l'étape \"{stepName}\" : HTTP {(int)response.StatusCode} {response.StatusCode}. Réponse : {body}");
     }
 
     private static async Task<T?> DeserializeAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
