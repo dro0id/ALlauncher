@@ -8,7 +8,8 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource VoidBrush}"
         FontFamily="{StaticResource BodyFontFamily}"
-        Foreground="{StaticResource InkBrush}">
+        Foreground="{StaticResource InkBrush}"
+        Icon="/Assets/Images/algaron-mark.png">
     <Grid>
         <!-- Halo de fond (signature Algaron) : deux dégradés radiaux, violet et cyan. -->
         <Canvas IsHitTestVisible="False">
@@ -45,14 +46,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                    <Grid Width="18" Height="18" Margin="0,0,10,0">
-                        <Rectangle Width="13" Height="13" Stroke="{StaticResource CyanBrush}" StrokeThickness="1.3"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-                            <Rectangle.RenderTransform>
-                                <RotateTransform Angle="45" />
-                            </Rectangle.RenderTransform>
-                        </Rectangle>
-                    </Grid>
+                    <Image Source="/Assets/Images/algaron-mark.png" Width="18" Height="18" Stretch="Uniform" Margin="0,0,10,0" />
                     <TextBlock Text="A L G A R O N   L A U N C H E R" VerticalAlignment="Center"
                                FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                Foreground="{StaticResource InkDimBrush}" />
@@ -72,29 +66,10 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Bloc marque : losange cyan filaire + cœur plein (placeholder en attendant le logo officiel) -->
-                <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,8,0,20">
-                    <Grid Width="72" Height="72" HorizontalAlignment="Center">
-                        <Rectangle Width="52" Height="52" Stroke="{StaticResource CyanBrush}" StrokeThickness="1.5"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-                            <Rectangle.RenderTransform>
-                                <RotateTransform Angle="45" />
-                            </Rectangle.RenderTransform>
-                            <Rectangle.Effect>
-                                <DropShadowEffect Color="{StaticResource ColorCyan}" BlurRadius="18" ShadowDepth="0" Opacity="0.55" />
-                            </Rectangle.Effect>
-                        </Rectangle>
-                        <Rectangle Width="22" Height="22" Fill="{StaticResource CyanBrush}" Opacity="0.85"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-                            <Rectangle.RenderTransform>
-                                <RotateTransform Angle="45" />
-                            </Rectangle.RenderTransform>
-                        </Rectangle>
-                    </Grid>
-                    <TextBlock Text="ALGARON" HorizontalAlignment="Center" Margin="0,10,0,0"
-                               FontFamily="{StaticResource DisplayFontFamily}" FontWeight="Bold" FontSize="30"
-                               Foreground="{StaticResource InkBrush}" />
-                    <TextBlock Text="L A U N C H E R" HorizontalAlignment="Center" Margin="0,2,0,0"
+                <!-- Bloc marque : logo Algaron officiel (hexagone + mot-symbole) -->
+                <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,8,0,16">
+                    <Image Source="/Assets/Images/algaron-lockup.png" Width="220" Stretch="Uniform" />
+                    <TextBlock Text="L A U N C H E R" HorizontalAlignment="Center" Margin="0,4,0,0"
                                FontFamily="{StaticResource MonoFontFamily}" FontSize="11"
                                Foreground="{StaticResource CyanBrush}" />
                 </StackPanel>

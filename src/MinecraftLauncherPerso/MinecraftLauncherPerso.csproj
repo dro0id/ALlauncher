@@ -27,4 +27,11 @@
     <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Logo Algaron (fourni par l'utilisateur), recadré en deux versions :
+         algaron-mark.png (hexagone seul, icône) et algaron-lockup.png (hexagone + mot-symbole). -->
+    <None Remove="Assets\Images\*.png" />
+    <Resource Include="Assets\Images\*.png" />
+  </ItemGroup>
+
 </Project>
