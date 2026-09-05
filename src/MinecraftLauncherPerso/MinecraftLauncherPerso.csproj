@@ -7,9 +7,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>MinecraftLauncherPerso</RootNamespace>
-    <AssemblyName>MinecraftLauncherPerso</AssemblyName>
+    <AssemblyName>AL Launcher</AssemblyName>
     <Platforms>x64</Platforms>
     <LangVersion>latest</LangVersion>
+    <!-- Pas de .pdb dans les builds publiées : symboles de debug inutiles pour l'utilisateur final. -->
+    <DebugType>None</DebugType>
+    <ApplicationIcon>Assets\Images\algaron-mark.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
