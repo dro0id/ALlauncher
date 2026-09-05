@@ -11,12 +11,13 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="CenterScreen">
 
-    <!-- Écran de démarrage : logo Algaron en entrée "3D" (bascule PlaneProjection + zoom),
-         avant transition vers la fenêtre principale. Durées pilotées depuis le code-behind. -->
+    <!-- Écran de démarrage : logo Algaron en entrée dynamique (rotation + zoom, easing BackEase
+         pour un léger effet de rebond), avant transition vers la fenêtre principale. Durées
+         pilotées depuis le code-behind. -->
     <Window.Resources>
         <Storyboard x:Key="EntranceStoryboard">
-            <DoubleAnimation Storyboard.TargetName="LogoProjection" Storyboard.TargetProperty="RotationY"
-                              From="85" To="0" Duration="0:0:0.75">
+            <DoubleAnimation Storyboard.TargetName="LogoRotate" Storyboard.TargetProperty="Angle"
+                              From="-18" To="0" Duration="0:0:0.75">
                 <DoubleAnimation.EasingFunction>
                     <BackEase EasingMode="EaseOut" Amplitude="0.4" />
                 </DoubleAnimation.EasingFunction>
@@ -70,11 +71,11 @@
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
             <Image x:Name="LogoImage" Source="/Assets/Images/algaron-lockup.png" Width="260" Stretch="Uniform"
                    Opacity="0" RenderTransformOrigin="0.5,0.5">
-                <Image.Projection>
-                    <PlaneProjection x:Name="LogoProjection" RotationY="85" />
-                </Image.Projection>
                 <Image.RenderTransform>
-                    <ScaleTransform x:Name="LogoScale" ScaleX="0.55" ScaleY="0.55" />
+                    <TransformGroup>
+                        <ScaleTransform x:Name="LogoScale" ScaleX="0.55" ScaleY="0.55" />
+                        <RotateTransform x:Name="LogoRotate" Angle="-18" />
+                    </TransformGroup>
                 </Image.RenderTransform>
                 <Image.Effect>
                     <DropShadowEffect Color="#FF00E5C7" BlurRadius="36" ShadowDepth="0" Opacity="0.55" />
