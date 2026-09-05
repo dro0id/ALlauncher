@@ -110,7 +110,7 @@ Forge dépend.
 Fichier : `src/MinecraftLauncherPerso/Services/ModSync/ModSyncService.cs`
 
 Le launcher pointe sur une archive `.zip` unique du pack complet, hébergée sur le VPS
-(`ModpackZipUrl`, par défaut `http://185.185.82.180/modpack/Algaron-modded.zip`), qui doit
+(`ModpackZipUrl`), qui doit
 contenir `mods/` et `config/` **à sa racine** (mêmes noms de dossiers qu'un `.minecraft`
 classique) : à chaque mise à jour du pack, remplacez ce zip sur le VPS.
 
